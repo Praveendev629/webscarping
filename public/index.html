@@ -1,232 +1,254 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TN Results Scraper | Premium Edition</title>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <style>
-        :root {
-            --primary: #6366f1;
-            --secondary: #a855f7;
-            --bg: #0f172a;
-            --card-bg: rgba(30, 41, 59, 0.7);
-            --text: #f8fafc;
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.29/jspdf.plugin.autotable.min.js"></script>
+<style>
+    :root {
+        --primary: #6366f1;
+        --secondary: #a855f7;
+        --bg: #0f172a;
+        --card-bg: rgba(30, 41, 59, 0.7);
+        --text: #f8fafc;
+    }
+
+    * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        font-family: 'Outfit', sans-serif;
+    }
+
+    body {
+        background-color: var(--bg);
+        background-image:
+            radial-gradient(at 0% 0%, hsla(253, 16%, 7%, 1) 0, transparent 50%),
+            radial-gradient(at 50% 0%, hsla(225, 39%, 30%, 1) 0, transparent 50%),
+            radial-gradient(at 100% 0%, hsla(339, 49%, 30%, 1) 0, transparent 50%);
+        color: var(--text);
+        min-height: 100vh;
+        padding: 2rem;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .container {
+        width: 100%;
+        max-width: 1200px;
+    }
+
+    header {
+        text-align: center;
+        margin-bottom: 3rem;
+        animation: fadeIn 1s ease-out;
+    }
+
+    h1 {
+        font-size: 3rem;
+        font-weight: 700;
+        background: linear-gradient(to right, var(--primary), var(--secondary));
+        background-clip: text;
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        margin-bottom: 0.5rem;
+    }
+
+    p.subtitle {
+        color: #94a3b8;
+        font-size: 1.1rem;
+    }
+
+    .main-grid {
+        display: grid;
+        grid-template-columns: 1fr 2fr;
+        gap: 2rem;
+    }
+
+    .input-card {
+        background: var(--card-bg);
+        backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 1rem;
+        padding: 2rem;
+        height: fit-content;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    }
+
+    .input-group {
+        margin-bottom: 1.5rem;
+    }
+
+    label {
+        display: block;
+        margin-bottom: 0.5rem;
+        font-weight: 600;
+        color: #e2e8f0;
+    }
+
+    textarea {
+        width: 100%;
+        height: 150px;
+        background: rgba(15, 23, 42, 0.6);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 0.5rem;
+        padding: 1rem;
+        color: #fff;
+        font-family: 'Courier New', monospace;
+        resize: vertical;
+        transition: border-color 0.3s;
+    }
+
+    textarea:focus {
+        outline: none;
+        border-color: var(--primary);
+    }
+
+    .actions {
+        display: flex;
+        gap: 1rem;
+        margin-top: 1rem;
+        flex-wrap: wrap;
+    }
+
+    button {
+        flex: 1;
+        padding: 0.75rem 1.5rem;
+        border: none;
+        border-radius: 0.5rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: transform 0.2s, opacity 0.2s;
+        white-space: nowrap;
+    }
+
+    .btn-primary {
+        background: linear-gradient(135deg, var(--primary), var(--secondary));
+        color: white;
+        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+    }
+
+    .btn-secondary {
+        background: rgba(255, 255, 255, 0.05);
+        color: #fff;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .btn-success {
+        background: rgba(16, 185, 129, 0.2);
+        color: #34d399;
+        border: 1px solid rgba(52, 211, 153, 0.2);
+    }
+
+    button:hover {
+        transform: translateY(-2px);
+        opacity: 0.9;
+    }
+
+    button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        transform: none;
+    }
+
+    .results-card {
+        background: var(--card-bg);
+        backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 1rem;
+        padding: 2rem;
+        min-height: 500px;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .results-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+    }
+
+    .status-badge {
+        background: rgba(99, 102, 241, 0.2);
+        color: #818cf8;
+        padding: 0.25rem 0.75rem;
+        border-radius: 9999px;
+        font-size: 0.875rem;
+    }
+
+    /* Table */
+    .table-container {
+        overflow-x: auto;
+        flex-grow: 1;
+    }
+
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.9rem;
+    }
+
+    th,
+    td {
+        text-align: left;
+        padding: 1rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    th {
+        font-weight: 600;
+        color: #94a3b8;
+        text-transform: uppercase;
+        font-size: 0.75rem;
+        letter-spacing: 0.05em;
+    }
+
+    tr:hover {
+        background: rgba(255, 255, 255, 0.02);
+    }
+
+    /* Status colors */
+    .status-pass {
+        color: #4ade80;
+    }
+
+    .status-fail {
+        color: #f87171;
+    }
+
+    .status-error {
+        color: #fca5a5;
+    }
+
+    @keyframes fadeIn {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
         }
 
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-            font-family: 'Outfit', sans-serif;
+        to {
+            opacity: 1;
+            transform: translateY(0);
         }
+    }
 
-        body {
-            background-color: var(--bg);
-            background-image: 
-                radial-gradient(at 0% 0%, hsla(253,16%,7%,1) 0, transparent 50%), 
-                radial-gradient(at 50% 0%, hsla(225,39%,30%,1) 0, transparent 50%), 
-                radial-gradient(at 100% 0%, hsla(339,49%,30%,1) 0, transparent 50%);
-            color: var(--text);
-            min-height: 100vh;
-            padding: 2rem;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
+    /* Loading Spinner */
+    .spinner {
+        display: none;
+        width: 24px;
+        height: 24px;
+        border: 3px solid rgba(255, 255, 255, 0.3);
+        border-radius: 50%;
+        border-top-color: #fff;
+        animation: spin 1s ease-in-out infinite;
+    }
+
+    @keyframes spin {
+        to {
+            transform: rotate(360deg);
         }
-
-        .container {
-            width: 100%;
-            max-width: 1200px;
-        }
-
-        header {
-            text-align: center;
-            margin-bottom: 3rem;
-            animation: fadeIn 1s ease-out;
-        }
-
-        h1 {
-            font-size: 3rem;
-            font-weight: 700;
-            background: linear-gradient(to right, var(--primary), var(--secondary));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            margin-bottom: 0.5rem;
-        }
-
-        p.subtitle {
-            color: #94a3b8;
-            font-size: 1.1rem;
-        }
-
-        .main-grid {
-            display: grid;
-            grid-template-columns: 1fr 2fr;
-            gap: 2rem;
-        }
-
-        .input-card {
-            background: var(--card-bg);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 1rem;
-            padding: 2rem;
-            height: fit-content;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-        }
-
-        .input-group {
-            margin-bottom: 1.5rem;
-        }
-
-        label {
-            display: block;
-            margin-bottom: 0.5rem;
-            font-weight: 600;
-            color: #e2e8f0;
-        }
-
-        textarea {
-            width: 100%;
-            height: 150px;
-            background: rgba(15, 23, 42, 0.6);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 0.5rem;
-            padding: 1rem;
-            color: #fff;
-            font-family: 'Courier New', monospace;
-            resize: vertical;
-            transition: border-color 0.3s;
-        }
-
-        textarea:focus {
-            outline: none;
-            border-color: var(--primary);
-        }
-
-        .actions {
-            display: flex;
-            gap: 1rem;
-            margin-top: 1rem;
-        }
-
-        button {
-            flex: 1;
-            padding: 0.75rem 1.5rem;
-            border: none;
-            border-radius: 0.5rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: transform 0.2s, opacity 0.2s;
-        }
-
-        .btn-primary {
-            background: linear-gradient(135deg, var(--primary), var(--secondary));
-            color: white;
-            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
-        }
-
-        .btn-secondary {
-            background: rgba(255, 255, 255, 0.05);
-            color: #fff;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        button:hover {
-            transform: translateY(-2px);
-            opacity: 0.9;
-        }
-
-        button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: none;
-        }
-
-        .results-card {
-            background: var(--card-bg);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 1rem;
-            padding: 2rem;
-            min-height: 500px;
-            display: flex;
-            flex-direction: column;
-        }
-
-        .results-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 1rem;
-        }
-
-        .status-badge {
-            background: rgba(99, 102, 241, 0.2);
-            color: #818cf8;
-            padding: 0.25rem 0.75rem;
-            border-radius: 9999px;
-            font-size: 0.875rem;
-        }
-
-        /* Table */
-        .table-container {
-            overflow-x: auto;
-            flex-grow: 1;
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 0.9rem;
-        }
-
-        th, td {
-            text-align: left;
-            padding: 1rem;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-        }
-
-        th {
-            font-weight: 600;
-            color: #94a3b8;
-            text-transform: uppercase;
-            font-size: 0.75rem;
-            letter-spacing: 0.05em;
-        }
-
-        tr:hover {
-            background: rgba(255, 255, 255, 0.02);
-        }
-
-        /* Status colors */
-        .status-pass { color: #4ade80; }
-        .status-fail { color: #f87171; }
-        .status-error { color: #fca5a5; }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        /* Loading Spinner */
-        .spinner {
-            display: none;
-            width: 24px;
-            height: 24px;
-            border: 3px solid rgba(255,255,255,0.3);
-            border-radius: 50%;
-            border-top-color: #fff;
-            animation: spin 1s ease-in-out infinite;
-        }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-        
-    </style>
+    }
+</style>
 </head>
+
 <body>
 
     <header>
@@ -235,7 +257,7 @@
     </header>
 
     <div class="container main-grid">
-        
+
         <!-- Logic / Input Section -->
         <div class="input-card">
             <div class="input-group">
@@ -257,12 +279,15 @@
                     <div id="btn-spinner" class="spinner"></div>
                 </button>
                 <button class="btn-secondary" onclick="exportToCSV()">Export CSV</button>
+                <button class="btn-success" onclick="exportToPDF()">Export PDF</button>
             </div>
-            
+
             <div style="margin-top: 1rem;">
                 <p id="progress-text" style="color: #94a3b8; font-size: 0.9rem;">Ready to start</p>
-                <div style="width: 100%; height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; margin-top: 0.5rem; overflow: hidden;">
-                    <div id="progress-bar" style="width: 0%; height: 100%; background: var(--primary); transition: width 0.3s;"></div>
+                <div
+                    style="width: 100%; height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; margin-top: 0.5rem; overflow: hidden;">
+                    <div id="progress-bar"
+                        style="width: 0%; height: 100%; background: var(--primary); transition: width 0.3s;"></div>
                 </div>
             </div>
         </div>
@@ -273,7 +298,7 @@
                 <h3>Results</h3>
                 <span class="status-badge" id="count-badge">0 Found</span>
             </div>
-            
+
             <div class="table-container">
                 <table id="results-table">
                     <thead>
@@ -326,7 +351,7 @@
             for (let i = 0; i < regnos.length; i++) {
                 const r = regnos[i];
                 // Use corresponding DOB, or fallback to the first one (if single DOB provided for all)
-                const d = dobs[i] || dobs[0]; 
+                const d = dobs[i] || dobs[0];
 
                 updateProgress(i, regnos.length, `Fetching ${r}...`);
 
@@ -336,9 +361,9 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ regno: r, dob: d })
                     });
-                    
+
                     const result = await response.json();
-                    
+
                     if (result.success) {
                         addResultRow(r, d, result.data);
                     } else {
@@ -349,7 +374,7 @@
                     console.error(error);
                     addResultRow(r, d, { error: "Network/Server Error" }, true);
                 }
-                
+
                 // Small delay to be nice to the server
                 await new Promise(resolve => setTimeout(resolve, 500));
             }
@@ -365,22 +390,25 @@
             const tbody = document.getElementById('results-table').querySelector('tbody');
             const tr = document.createElement('tr');
 
-            // Heuristics to find Name in the data dict if it exists
-            // Keys might be "NAME", "CANDIDATE NAME", etc.
+            // Find name using various keys just in case
             let name = data['NAME'] || data['CANDIDATE NAME'] || "N/A";
-            
+
             // Format details for the Status/Marks column
             let details = "";
+            let dataForExport = { ...data }; // Copy for export data
+
             if (isError) {
                 details = `<span class="status-error">${data.error}</span>`;
             } else {
-                // Visualize the dictionary pairs
-                // exclude NAME from details if we extracted it
                 const detailParts = [];
+                // Prioritize TOTAL/RESULT if available
+                if (data['Result'] || data['RESULT']) detailParts.push(`<b class="${data['RESULT'] === 'PASS' ? 'status-pass' : 'status-fail'}">${data['RESULT']}</b>`);
+                if (data['Total'] || data['TOTAL']) detailParts.push(`<b>Total: ${data['TOTAL']}</b>`);
+
                 for (const [k, v] of Object.entries(data)) {
-                    if (k !== 'NAME' && k !== 'CANDIDATE NAME') {
-                         detailParts.push(`<b>${k}:</b> ${v}`);
-                    }
+                    // Start filtering unnecessary keys
+                    if (['NAME', 'CANDIDATE NAME', 'TOTAL', 'RESULT'].includes(k)) continue;
+                    detailParts.push(`${k}: ${v}`);
                 }
                 details = detailParts.join(', ');
             }
@@ -388,18 +416,19 @@
             tr.innerHTML = `
                 <td>${regno}</td>
                 <td>${dob}</td>
-                <td>${name}</td>
+                <td><b>${name}</b></td>
                 <td>${details}</td>
             `;
 
             tbody.appendChild(tr);
-            
-            // Save for export
+
+            // Save for export in a clean format
             resultsData.push({
                 regno,
                 dob,
-                name: name !== "N/A" ? name : "",
-                ...data
+                name: name,
+                // Flatten the details for CSV/PDF if needed
+                details: isError ? data.error : JSON.stringify(dataForExport).replace(/[{}"]/g, ' ')
             });
 
             document.getElementById('count-badge').innerText = `${resultsData.length} Found`;
@@ -416,38 +445,64 @@
                 alert("No data to export");
                 return;
             }
-
-            // Generate Headers (Union of all keys)
-            const allKeys = new Set(['regno', 'dob']);
-            resultsData.forEach(row => {
-                Object.keys(row).forEach(k => allKeys.add(k));
-            });
-            const headers = Array.from(allKeys);
-
-            // Generate Rows
-            const csvRows = [];
-            csvRows.push(headers.join(','));
+            const headers = ['Reg No', 'DOB', 'Name', 'Details'];
+            const csvRows = [headers.join(',')];
 
             resultsData.forEach(row => {
-                const values = headers.map(header => {
-                    const val = row[header] || '';
-                    const escaped = ('' + val).replace(/"/g, '""');
-                    return `"${escaped}"`;
-                });
-                csvRows.push(values.join(','));
+                const values = [
+                    row.regno,
+                    row.dob,
+                    row.name,
+                    row.details.replace(/,/g, ';') // Avoid breaking CSV structure
+                ];
+                csvRows.push(values.map(v => `"${v}"`).join(','));
             });
 
-            // Download
             const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
-            a.setAttribute('hidden', '');
-            a.setAttribute('href', url);
-            a.setAttribute('download', 'tn_results.csv');
+            a.href = url;
+            a.download = 'tn_results_with_names.csv';
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
         }
-    </script>
-</body>
-</html>
+
+        function exportToPDF() {
+            if (resultsData.length === 0) {
+                alert("No data to export");
+                return;
+            }
+
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+
+            doc.setFontSize(18);
+            doc.text("TN Examination Results", 14, 20);
+            doc.setFontSize(10);
+            doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 28);
+
+            const tableColumn = ["Reg No", "DOB", "Name", "Result Details"];
+            const tableRows = [];
+
+            resultsData.forEach(row => {
+                const marksData = row.details;
+                tableRows.push([row.regno, row.dob, row.name, marksData]);
+            });
+
+            doc.autoTable({
+                head: [tableColumn],
+                body: tableRows,
+                startY: 35,
+                theme: 'grid',
+                styles: { fontSize: 8, cellWidth: 'wrap' },
+                columnStyles: {
+                    0: { cellWidth: 25 },
+                    1: { cellWidth: 25 },
+                    2: { cellWidth: 40 },
+                    3: { cellWidth: 'auto' }
+                }
+            });
+
+            doc.save("tn_results_report.pdf");
+        }

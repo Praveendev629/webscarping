@@ -70,29 +70,37 @@ def scrape():
             rows = target_table.find_all('tr')
             for row in rows:
                 cols = row.find_all('td')
+                row_text = row.get_text(separator=' ', strip=True)
+                row_text_upper = row_text.upper()
+
+                # Reliable Name Parsing: Look for the text containing the Register Number
+                # Format is usually: "PRAVEEN S ( 9541237 )" or "PRAVEEN S - 9541237"
+                if str(regno) in row_text:
+                    # Heuristic: Remove the regno and common delimiters to find the name
+                    clean_text = row_text.replace(str(regno), '').replace('(', '').replace(')', '').replace('-', '').strip()
+                    # Filter out other common noise if present
+                    clean_text = clean_text.replace("Registration Number", "").replace("Reg No", "").strip()
+                    
+                    # Assume what's left is the name (if it's not empty and reasonable length)
+                    if len(clean_text) > 2 and "NAME" not in extracted_info:
+                         extracted_info['NAME'] = clean_text
+
                 if not cols: 
                     continue
                 
-                # Check for Name Row (often has "Name" label)
-                row_text = row.get_text(separator=' ', strip=True).upper()
-                if "NAME" in row_text and ":" in row_text:
-                    # Format might be "NAME : PRAVEEN S"
-                    parts = row_text.split(':')
+                # Check for Name Row (fallback if generic "NAME" label exists)
+                if "NAME" in row_text_upper and ":" in row_text_upper and "NAME" not in extracted_info:
+                    parts = row_text_upper.split(':')
                     if len(parts) > 1:
                         extracted_info['NAME'] = parts[1].strip()
-                elif "NAME" in row_text:
-                     # Sometimes just "NAME PRAVEEN S"
-                     extracted_info['NAME'] = row_text.replace("NAME", "").replace(":", "").strip()
 
                 # Extract Marks / Status
                 # Row usually has Subject | Marks | Pass/Fail
-                # We will look for the specific "Total" row or "Pass/Fail"
-                if "TOTAL" in row_text:
+                if "TOTAL" in row_text_upper:
                     # Extract the total value
                     for col in cols:
-                        if col.text.strip().isdigit():  # Basic heuristic for Total
+                        if col.text.strip().isdigit(): 
                             extracted_info['TOTAL'] = col.text.strip()
-                            
                     # Start looking for Pass/Fail in the same row
                     for col in cols:
                         if col.text.strip().upper() in ['PASS', 'FAIL']:
@@ -100,8 +108,7 @@ def scrape():
 
                 # Generic Subject-Wise Marks parsing
                 # If row has >3 columns, likely a marks row
-                if len(cols) >= 3 and "SUBJECT" not in row_text and "TOTAL" not in row_text:
-                    # Heuristic: Col 0 = Subject, Last Col = Pass/Fail, Col -2 = Total
+                if len(cols) >= 3 and "SUBJECT" not in row_text_upper and "TOTAL" not in row_text_upper:
                     subject = cols[0].text.strip()
                     total_marks = cols[-2].text.strip() # Usually 2nd to last is total
                     result = cols[-1].text.strip()      # Last is P/F
@@ -109,18 +116,17 @@ def scrape():
                     if subject and total_marks.isdigit():
                          extracted_info[subject] = f"{total_marks} ({result})"
 
-        # If name is still missing, try the very first row of the table (common in TN results)
+        # Fallback Name extraction (Header row)
         if 'NAME' not in extracted_info and target_table:
-            first_row = target_table.find('tr')
-            if first_row:
-                 # Extract text like "Register No: 123 Name: ABC"
+             # Sometimes it's in the very first row without the Reg No being obvious
+             first_row = target_table.find('tr')
+             if first_row:
                  text = first_row.get_text(separator=' ', strip=True)
-                 if "NAME" in text.upper():
-                     # Try to grab text after "NAME"
-                     import re
-                     match = re.search(r'NAME\s*[:\-]?\s*([A-Za-z\s\.]+)', text, re.IGNORECASE)
-                     if match:
-                         extracted_info['NAME'] = match.group(1).strip()
+                 if "(" in text and ")" in text:
+                     # Attempt to grab name from "NAME ( REGNO )" pattern
+                     parts = text.split('(')
+                     if len(parts) > 0 and len(parts[0]) > 2:
+                         extracted_info['NAME'] = parts[0].strip()
 
 
         # Check if we found meaningful data
