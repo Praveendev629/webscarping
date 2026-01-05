@@ -44,25 +44,84 @@ def scrape():
         if "Invalid Register Number" in response.text:
             return jsonify({"success": False, "error": "Invalid Register Number"}), 200
 
-        # Attempt to extract data
-        # Since we don't know the exact table structure, we'll look for common patterns or generic table parsing
-        # Plan: Extract all tables and Convert to JSON
-        tables_data = []
-        tables = soup.find_all('table')
+        # Refined Parsing Logic based on Browser Inspection
+        # The main results are usually in a <div class="design"> or similar
+        # We look for the table that contains "NAME" or "Register No"
         
         extracted_info = {}
+        tables = soup.find_all('table')
         
-        # Try to find Name (usually in a cell) -> Basic Heuristic
-        # Often structure is <tr><td>NAME</td><td>ACTUAL NAME</td></tr>
+        target_table = None
         for table in tables:
-            rows = table.find_all('tr')
+            text_content = table.get_text()
+            if "Example" in text_content: # Skip instructions table if any
+                continue
+            if "NAME" in text_content or "REGISTER NUMBER" in text_content or "Register No" in text_content:
+                target_table = table
+                break
+        
+        if not target_table:
+             # Fallback: Try the div class 'design' which usually holds the result
+             design_div = soup.find('div', class_='design')
+             if design_div:
+                 target_table = design_div.find('table')
+
+        if target_table:
+            rows = target_table.find_all('tr')
             for row in rows:
-                cols = [ele.text.strip() for ele in row.find_all('td')]
-                if len(cols) >= 2:
-                    # Capture Key-Value pairs like "NAME : PRAVEEN"
-                    key = cols[0].replace(':', '').strip().upper()
-                    value = cols[1].replace(':', '').strip()
-                    extracted_info[key] = value
+                cols = row.find_all('td')
+                if not cols: 
+                    continue
+                
+                # Check for Name Row (often has "Name" label)
+                row_text = row.get_text(separator=' ', strip=True).upper()
+                if "NAME" in row_text and ":" in row_text:
+                    # Format might be "NAME : PRAVEEN S"
+                    parts = row_text.split(':')
+                    if len(parts) > 1:
+                        extracted_info['NAME'] = parts[1].strip()
+                elif "NAME" in row_text:
+                     # Sometimes just "NAME PRAVEEN S"
+                     extracted_info['NAME'] = row_text.replace("NAME", "").replace(":", "").strip()
+
+                # Extract Marks / Status
+                # Row usually has Subject | Marks | Pass/Fail
+                # We will look for the specific "Total" row or "Pass/Fail"
+                if "TOTAL" in row_text:
+                    # Extract the total value
+                    for col in cols:
+                        if col.text.strip().isdigit():  # Basic heuristic for Total
+                            extracted_info['TOTAL'] = col.text.strip()
+                            
+                    # Start looking for Pass/Fail in the same row
+                    for col in cols:
+                        if col.text.strip().upper() in ['PASS', 'FAIL']:
+                            extracted_info['RESULT'] = col.text.strip().upper()
+
+                # Generic Subject-Wise Marks parsing
+                # If row has >3 columns, likely a marks row
+                if len(cols) >= 3 and "SUBJECT" not in row_text and "TOTAL" not in row_text:
+                    # Heuristic: Col 0 = Subject, Last Col = Pass/Fail, Col -2 = Total
+                    subject = cols[0].text.strip()
+                    total_marks = cols[-2].text.strip() # Usually 2nd to last is total
+                    result = cols[-1].text.strip()      # Last is P/F
+                    
+                    if subject and total_marks.isdigit():
+                         extracted_info[subject] = f"{total_marks} ({result})"
+
+        # If name is still missing, try the very first row of the table (common in TN results)
+        if 'NAME' not in extracted_info and target_table:
+            first_row = target_table.find('tr')
+            if first_row:
+                 # Extract text like "Register No: 123 Name: ABC"
+                 text = first_row.get_text(separator=' ', strip=True)
+                 if "NAME" in text.upper():
+                     # Try to grab text after "NAME"
+                     import re
+                     match = re.search(r'NAME\s*[:\-]?\s*([A-Za-z\s\.]+)', text, re.IGNORECASE)
+                     if match:
+                         extracted_info['NAME'] = match.group(1).strip()
+
 
         # Check if we found meaningful data
         if not extracted_info:
