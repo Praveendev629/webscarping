@@ -504,5 +504,60 @@
                 }
             });
 
+            // Add Footer to PDF
+            const pageCount = doc.internal.getNumberOfPages();
+            for (let i = 1; i <= pageCount; i++) {
+                doc.setPage(i);
+                doc.setFontSize(10);
+                doc.setTextColor(100);
+                doc.text("Made by Praveen", doc.internal.pageSize.width / 2, doc.internal.pageSize.height - 10, { align: 'center' });
+            }
+
             doc.save("tn_results_report.pdf");
         }
+    </script>
+
+    <footer class="creator-signature">
+        <p>Made with ❤️ by <span class="highlight">Praveen</span></p>
+    </footer>
+
+    <style>
+        .creator-signature {
+            margin-top: 3rem;
+            text-align: center;
+            padding: 1rem;
+            animation: float 3s ease-in-out infinite;
+        }
+
+        .creator-signature p {
+            font-size: 1.2rem;
+            color: #94a3b8;
+            font-weight: 300;
+        }
+
+        .creator-signature .highlight {
+            background: linear-gradient(135deg, #FFD700, #FFA500);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-weight: 700;
+            font-size: 1.4rem;
+            text-shadow: 0 0 20px rgba(255, 215, 0, 0.3);
+        }
+
+        @keyframes float {
+            0% {
+                transform: translateY(0px);
+            }
+
+            50% {
+                transform: translateY(-5px);
+            }
+
+            100% {
+                transform: translateY(0px);
+            }
+        }
+    </style>
+</body>
+
+</html>
