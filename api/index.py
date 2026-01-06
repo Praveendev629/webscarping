@@ -48,7 +48,15 @@ def scrape():
         # The main results are usually in a <div class="design"> or similar
         # We look for the table that contains "NAME" or "Register No"
         
-        extracted_info = {}
+        extracted_info = {
+            "NAME": None,
+            "REGNO": regno,
+            "DOB": dob,
+            "TOTAL": None,
+            "RESULT": None,
+            "SUBJECTS": {}
+        }
+        
         tables = soup.find_all('table')
         
         target_table = None
@@ -74,63 +82,67 @@ def scrape():
                 row_text_upper = row_text.upper()
 
                 # Reliable Name Parsing: Look for the text containing the Register Number
-                # Format is usually: "PRAVEEN S ( 9541237 )" or "PRAVEEN S - 9541237"
                 if str(regno) in row_text:
-                    # Heuristic: Remove the regno and common delimiters to find the name
                     clean_text = row_text.replace(str(regno), '').replace('(', '').replace(')', '').replace('-', '').strip()
-                    # Filter out other common noise if present
                     clean_text = clean_text.replace("Registration Number", "").replace("Reg No", "").strip()
-                    
-                    # Assume what's left is the name (if it's not empty and reasonable length)
-                    if len(clean_text) > 2 and "NAME" not in extracted_info:
+                    if len(clean_text) > 2 and not extracted_info['NAME']:
                          extracted_info['NAME'] = clean_text
 
                 if not cols: 
                     continue
                 
-                # Check for Name Row (fallback if generic "NAME" label exists)
-                if "NAME" in row_text_upper and ":" in row_text_upper and "NAME" not in extracted_info:
+                # Check for Name Row (fallback)
+                if "NAME" in row_text_upper and ":" in row_text_upper and not extracted_info['NAME']:
                     parts = row_text_upper.split(':')
                     if len(parts) > 1:
                         extracted_info['NAME'] = parts[1].strip()
 
                 # Extract Marks / Status
-                # Row usually has Subject | Marks | Pass/Fail
                 if "TOTAL" in row_text_upper:
-                    # Extract the total value
                     for col in cols:
                         if col.text.strip().isdigit(): 
                             extracted_info['TOTAL'] = col.text.strip()
-                    # Start looking for Pass/Fail in the same row
                     for col in cols:
                         if col.text.strip().upper() in ['PASS', 'FAIL']:
                             extracted_info['RESULT'] = col.text.strip().upper()
 
-                # Generic Subject-Wise Marks parsing
-                # If row has >3 columns, likely a marks row
+                # Subject-Wise Marks parsing
+                # If row has >=3 columns (Subject | ... | Total | Pass/Fail)
                 if len(cols) >= 3 and "SUBJECT" not in row_text_upper and "TOTAL" not in row_text_upper:
-                    subject = cols[0].text.strip()
-                    total_marks = cols[-2].text.strip() # Usually 2nd to last is total
-                    result = cols[-1].text.strip()      # Last is P/F
+                    subject_name = cols[0].text.strip()
                     
-                    if subject and total_marks.isdigit():
-                         extracted_info[subject] = f"{total_marks} ({result})"
+                    # Heuristic: the marks are usually near the end
+                    # Typical structure: Subject Name | Theory | Internal | Practical | Total | Result
+                    # We want the Total column (usually 2nd to last)
+                    
+                    # Basic cleanup for subject name (remove codes like '001 LANGUAGE')
+                    # Keep it simple for now, usually the first column IS the subject
+                    
+                    if subject_name:
+                        # Find the mark value (Total for that subject)
+                        # We generally assume the 2nd to last column is the subject total
+                        # But let's look for the first valid large integer or specific column index
+                        
+                        subject_total = cols[-2].text.strip()
+                        subject_result = cols[-1].text.strip()
+                        
+                        # Validate if it looks like a mark row
+                        if subject_total.isdigit() or subject_total == "ABS": # Handle Absent
+                             extracted_info['SUBJECTS'][subject_name] = subject_total
 
         # Fallback Name extraction (Header row)
-        if 'NAME' not in extracted_info and target_table:
-             # Sometimes it's in the very first row without the Reg No being obvious
+        if not extracted_info['NAME'] and target_table:
              first_row = target_table.find('tr')
              if first_row:
                  text = first_row.get_text(separator=' ', strip=True)
                  if "(" in text and ")" in text:
-                     # Attempt to grab name from "NAME ( REGNO )" pattern
                      parts = text.split('(')
                      if len(parts) > 0 and len(parts[0]) > 2:
                          extracted_info['NAME'] = parts[0].strip()
 
 
         # Check if we found meaningful data
-        if not extracted_info:
+        if not extracted_info['NAME'] and not extracted_info['SUBJECTS']:
              # Fallback: Just return successful connection but no data found
              return jsonify({
                  "success": False, 

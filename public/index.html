@@ -154,9 +154,10 @@
         border: 1px solid rgba(255, 255, 255, 0.1);
         border-radius: 1rem;
         padding: 2rem;
-        min-height: 500px;
+        min-height: 200px;
         display: flex;
         flex-direction: column;
+        margin-bottom: 2rem;
     }
 
     .results-header {
@@ -199,6 +200,7 @@
         text-transform: uppercase;
         font-size: 0.75rem;
         letter-spacing: 0.05em;
+        white-space: nowrap;
     }
 
     tr:hover {
@@ -208,10 +210,12 @@
     /* Status colors */
     .status-pass {
         color: #4ade80;
+        font-weight: bold;
     }
 
     .status-fail {
         color: #f87171;
+        font-weight: bold;
     }
 
     .status-error {
@@ -292,27 +296,54 @@
             </div>
         </div>
 
-        <!-- Output Section -->
-        <div class="results-card">
-            <div class="results-header">
-                <h3>Results</h3>
-                <span class="status-badge" id="count-badge">0 Found</span>
+        <div>
+            <!-- Output Section -->
+            <div class="results-card">
+                <div class="results-header">
+                    <h3>Results</h3>
+                    <span class="status-badge" id="count-badge">0 Found</span>
+                </div>
+
+                <div class="table-container">
+                    <table id="results-table">
+                        <thead>
+                            <!-- Dynamic Headers will be injected here -->
+                            <tr id="table-header-row">
+                                <th>Reg No</th>
+                                <th>DOB</th>
+                                <th>Name</th>
+                                <th>Status</th>
+                                <!-- Subjects will be appended here -->
+                                <th>Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Rows will be injected here -->
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
-            <div class="table-container">
-                <table id="results-table">
-                    <thead>
-                        <tr>
-                            <th>Reg No</th>
-                            <th>DOB</th>
-                            <th>Name</th>
-                            <th>Status/Marks</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <!-- Rows will be injected here -->
-                    </tbody>
-                </table>
+            <!-- Ranking Section -->
+            <div class="results-card">
+                <div class="results-header">
+                    <h3>🏆 Top Rankers</h3>
+                </div>
+                <div class="table-container">
+                    <table id="ranking-table">
+                        <thead>
+                            <tr>
+                                <th>Rank</th>
+                                <th>Name</th>
+                                <th>Total Marks</th>
+                                <th>Result</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Ranking Rows -->
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
 
@@ -321,6 +352,7 @@
     <script>
         let resultsData = [];
         let isScraping = false;
+        let subjectColumns = new Set(); // To track all unique subjects found
 
         async function startScraping() {
             if (isScraping) return;
@@ -343,14 +375,18 @@
             document.getElementById('scrape-btn').disabled = true;
             document.getElementById('btn-text').style.display = 'none';
             document.getElementById('btn-spinner').style.display = 'block';
-            document.getElementById('results-table').querySelector('tbody').innerHTML = '';
+            document.querySelector('#results-table tbody').innerHTML = '';
+            document.querySelector('#ranking-table tbody').innerHTML = '';
+
             resultsData = [];
+            subjectColumns.clear();
+            resetTableHeader();
+
             updateProgress(0, regnos.length);
 
             // Logic: Iterate and Fetch
             for (let i = 0; i < regnos.length; i++) {
                 const r = regnos[i];
-                // Use corresponding DOB, or fallback to the first one (if single DOB provided for all)
                 const d = dobs[i] || dobs[0];
 
                 updateProgress(i, regnos.length, `Fetching ${r}...`);
@@ -365,20 +401,21 @@
                     const result = await response.json();
 
                     if (result.success) {
-                        addResultRow(r, d, result.data);
+                        processSuccessfulResult(result.data);
                     } else {
-                        addResultRow(r, d, { error: result.error }, true);
+                        addErrorRow(r, d, result.error);
                     }
 
                 } catch (error) {
                     console.error(error);
-                    addResultRow(r, d, { error: "Network/Server Error" }, true);
+                    addErrorRow(r, d, "Network/Server Error");
                 }
 
-                // Small delay to be nice to the server
+                // Small delay
                 await new Promise(resolve => setTimeout(resolve, 500));
             }
 
+            updateRankings();
             updateProgress(regnos.length, regnos.length, "Completed");
             isScraping = false;
             document.getElementById('scrape-btn').disabled = false;
@@ -386,52 +423,167 @@
             document.getElementById('btn-spinner').style.display = 'none';
         }
 
-        function addResultRow(regno, dob, data, isError = false) {
-            const tbody = document.getElementById('results-table').querySelector('tbody');
-            const tr = document.createElement('tr');
-
-            // Find name using various keys just in case
-            let name = data['NAME'] || data['CANDIDATE NAME'] || "N/A";
-
-            // Format details for the Status/Marks column
-            let details = "";
-            let dataForExport = { ...data }; // Copy for export data
-
-            if (isError) {
-                details = `<span class="status-error">${data.error}</span>`;
-            } else {
-                const detailParts = [];
-                // Prioritize TOTAL/RESULT if available
-                if (data['Result'] || data['RESULT']) detailParts.push(`<b class="${data['RESULT'] === 'PASS' ? 'status-pass' : 'status-fail'}">${data['RESULT']}</b>`);
-                if (data['Total'] || data['TOTAL']) detailParts.push(`<b>Total: ${data['TOTAL']}</b>`);
-
-                for (const [k, v] of Object.entries(data)) {
-                    // Start filtering unnecessary keys
-                    if (['NAME', 'CANDIDATE NAME', 'TOTAL', 'RESULT'].includes(k)) continue;
-                    detailParts.push(`${k}: ${v}`);
-                }
-                details = detailParts.join(', ');
-            }
-
+        function resetTableHeader() {
+            const tr = document.getElementById('table-header-row');
             tr.innerHTML = `
-                <td>${regno}</td>
-                <td>${dob}</td>
-                <td><b>${name}</b></td>
-                <td>${details}</td>
+                <th>Reg No</th>
+                <th>DOB</th>
+                <th>Name</th>
+                <th>Total</th>
+                <th>Status</th>
+            `;
+        }
+
+        function updateTableHeader() {
+            const tr = document.getElementById('table-header-row');
+
+            let html = `
+                <th>Reg No</th>
+                <th>DOB</th>
+                <th>Name</th>
             `;
 
-            tbody.appendChild(tr);
-
-            // Save for export in a clean format
-            resultsData.push({
-                regno,
-                dob,
-                name: name,
-                // Flatten the details for CSV/PDF if needed
-                details: isError ? data.error : JSON.stringify(dataForExport).replace(/[{}"]/g, ' ')
+            subjectColumns.forEach(sub => {
+                html += `<th>${sub}</th>`;
             });
 
+            html += `
+                <th>Total</th>
+                <th>Status</th>
+            `;
+
+            tr.innerHTML = html;
+        }
+
+        function processSuccessfulResult(data) {
+            // Store structured data
+            resultsData.push(data);
+
+            // Check for new subjects
+            if (data.SUBJECTS) {
+                let foundNew = false;
+                Object.keys(data.SUBJECTS).forEach(sub => {
+                    if (!subjectColumns.has(sub)) {
+                        subjectColumns.add(sub);
+                        foundNew = true;
+                    }
+                });
+                if (foundNew) {
+                    updateTableHeader();
+                    renderAllRows();
+                    return;
+                }
+            }
+
+            // If no new columns, just add this row
+            renderRow(data);
             document.getElementById('count-badge').innerText = `${resultsData.length} Found`;
+        }
+
+        function renderAllRows() {
+            const tbody = document.querySelector('#results-table tbody');
+            tbody.innerHTML = '';
+            resultsData.forEach(item => {
+                if (item.error) {
+                    renderErrorRow(item);
+                } else {
+                    renderRow(item);
+                }
+            });
+            document.getElementById('count-badge').innerText = `${resultsData.length} Found`;
+        }
+
+        function renderRow(data) {
+            const tbody = document.querySelector('#results-table tbody');
+            const tr = document.createElement('tr');
+
+            let tds = `
+                <td>${data.REGNO}</td>
+                <td>${data.DOB}</td>
+                <td><b>${data.NAME || "N/A"}</b></td>
+            `;
+
+            // Subject Marks
+            subjectColumns.forEach(sub => {
+                const mark = data.SUBJECTS && data.SUBJECTS[sub] ? data.SUBJECTS[sub] : '-';
+                tds += `<td>${mark}</td>`;
+            });
+
+            // Total and Status
+            const total = data.TOTAL || '-';
+            const status = data.RESULT === 'PASS'
+                ? '<span class="status-pass">PASS</span>'
+                : `<span class="status-fail">${data.RESULT || '-'}</span>`;
+
+            tds += `<td><b>${total}</b></td>`;
+            tds += `<td>${status}</td>`;
+
+            tr.innerHTML = tds;
+            tbody.appendChild(tr);
+        }
+
+        function addErrorRow(regno, dob, errorMsg) {
+            const errorObj = {
+                REGNO: regno,
+                DOB: dob,
+                NAME: "Error",
+                error: errorMsg,
+                TOTAL: 0,
+                RESULT: 'FAIL'
+            };
+            resultsData.push(errorObj);
+            renderErrorRow(errorObj);
+        }
+
+        function renderErrorRow(data) {
+            const tbody = document.querySelector('#results-table tbody');
+            const tr = document.createElement('tr');
+
+            // Span across all columns
+            const colSpan = 4 + subjectColumns.size;
+            tr.innerHTML = `
+                <td>${data.REGNO}</td>
+                <td>${data.DOB}</td>
+                <td colspan="${colSpan}" class="status-error">${data.error}</td>
+             `;
+            tbody.appendChild(tr);
+        }
+
+        function updateRankings() {
+            // Filter valid results
+            const validResults = resultsData.filter(d => !d.error && d.TOTAL);
+
+            // Sort by Total Descending
+            validResults.sort((a, b) => {
+                const totalA = parseInt(a.TOTAL) || 0;
+                const totalB = parseInt(b.TOTAL) || 0;
+                return totalB - totalA;
+            });
+
+            const tbody = document.querySelector('#ranking-table tbody');
+            tbody.innerHTML = '';
+
+            if (validResults.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4">No rankings available</td></tr>';
+                return;
+            }
+
+            validResults.forEach((student, index) => {
+                const tr = document.createElement('tr');
+                let rankIcon = '';
+                if (index === 0) rankIcon = '🥇 ';
+                else if (index === 1) rankIcon = '🥈 ';
+                else if (index === 2) rankIcon = '🥉 ';
+                else rankIcon = `#${index + 1}`;
+
+                tr.innerHTML = `
+                    <td>${rankIcon}</td>
+                    <td><b>${student.NAME}</b></td>
+                    <td>${student.TOTAL}</td>
+                    <td>${student.RESULT}</td>
+                `;
+                tbody.appendChild(tr);
+            });
         }
 
         function updateProgress(current, total, text) {
@@ -445,16 +597,30 @@
                 alert("No data to export");
                 return;
             }
-            const headers = ['Reg No', 'DOB', 'Name', 'Details'];
+
+            // Build CSV Headers
+            let headers = ['Reg No', 'DOB', 'Name'];
+            subjectColumns.forEach(s => headers.push(s));
+            headers.push('Total', 'Result');
+
             const csvRows = [headers.join(',')];
 
             resultsData.forEach(row => {
-                const values = [
-                    row.regno,
-                    row.dob,
-                    row.name,
-                    row.details.replace(/,/g, ';') // Avoid breaking CSV structure
+                if (row.error) return; // Skip errors in clean export
+
+                let values = [
+                    row.REGNO,
+                    row.DOB,
+                    row.NAME
                 ];
+
+                subjectColumns.forEach(sub => {
+                    values.push(row.SUBJECTS && row.SUBJECTS[sub] ? row.SUBJECTS[sub] : '-');
+                });
+
+                values.push(row.TOTAL || '0');
+                values.push(row.RESULT || '-');
+
                 csvRows.push(values.map(v => `"${v}"`).join(','));
             });
 
@@ -462,7 +628,7 @@
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = 'tn_results_with_names.csv';
+            a.download = 'tn_results_report.csv';
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -475,43 +641,39 @@
             }
 
             const { jsPDF } = window.jspdf;
-            const doc = new jsPDF();
+            const doc = new jsPDF('l'); // Landscape for table
 
             doc.setFontSize(18);
-            doc.text("TN Examination Results", 14, 20);
+            doc.text("TN Examination Results Report", 14, 20);
             doc.setFontSize(10);
             doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 28);
 
-            const tableColumn = ["Reg No", "DOB", "Name", "Result Details"];
-            const tableRows = [];
+            // Dynamically build columns
+            let head = [['Reg No', 'DOB', 'Name']];
+            subjectColumns.forEach(s => head[0].push(s));
+            head[0].push('Total');
+            head[0].push('Result');
 
+            let body = [];
             resultsData.forEach(row => {
-                const marksData = row.details;
-                tableRows.push([row.regno, row.dob, row.name, marksData]);
+                if (row.error) return;
+
+                let vals = [row.REGNO, row.DOB, row.NAME];
+                subjectColumns.forEach(sub => {
+                    vals.push(row.SUBJECTS && row.SUBJECTS[sub] ? row.SUBJECTS[sub] : '-');
+                });
+                vals.push(row.TOTAL || '-');
+                vals.push(row.RESULT || '-');
+                body.push(vals);
             });
 
             doc.autoTable({
-                head: [tableColumn],
-                body: tableRows,
+                head: head,
+                body: body,
                 startY: 35,
                 theme: 'grid',
-                styles: { fontSize: 8, cellWidth: 'wrap' },
-                columnStyles: {
-                    0: { cellWidth: 25 },
-                    1: { cellWidth: 25 },
-                    2: { cellWidth: 40 },
-                    3: { cellWidth: 'auto' }
-                }
+                styles: { fontSize: 8 }
             });
-
-            // Add Footer to PDF
-            const pageCount = doc.internal.getNumberOfPages();
-            for (let i = 1; i <= pageCount; i++) {
-                doc.setPage(i);
-                doc.setFontSize(10);
-                doc.setTextColor(100);
-                doc.text("Made by Praveen", doc.internal.pageSize.width / 2, doc.internal.pageSize.height - 10, { align: 'center' });
-            }
 
             doc.save("tn_results_report.pdf");
         }
