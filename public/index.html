@@ -382,60 +382,125 @@
 
             resultsData = [];
 
-            updateProgress(0, regnos.length);
-
-            // Logic: Iterate and Fetch
+            // Initial Work List
+            let workQueue = [];
             for (let i = 0; i < regnos.length; i++) {
-                const r = regnos[i];
-                const d = dobs[i] || dobs[0];
-
-                updateProgress(i, regnos.length, `Fetching ${r}...`);
-
-                try {
-                    const response = await fetch('/api/scrape', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ regno: r, dob: d })
-                    });
-
-                    const result = await response.json();
-
-                    if (result.success) {
-                        resultsData.push(result.data);
-                    } else {
-                        resultsData.push({
-                            REGNO: r,
-                            DOB: d,
-                            error: result.error,
-                            NAME: "Error",
-                            SUBJECTS: {}
-                        });
-                    }
-
-                } catch (error) {
-                    console.error(error);
-                    resultsData.push({
-                        REGNO: r,
-                        DOB: d,
-                        error: "Network Error",
-                        NAME: "Error",
-                        SUBJECTS: {}
-                    });
-                }
-
-                // Real-time update (re-render groups on every fetch for immediate feedback)
-                renderGroupedTables();
-                updateRankings();
-
-                // Small delay
-                await new Promise(resolve => setTimeout(resolve, 500));
+                workQueue.push({
+                    r: regnos[i],
+                    d: dobs[i] || dobs[0],
+                    originalIndex: i
+                });
             }
 
-            updateProgress(regnos.length, regnos.length, "Completed");
+            const totalItems = workQueue.length;
+            let finalResultsMap = new Map(); // Store success results by regno to avoid duplicates in display logic if needed
+
+            // Retry Loop (up to 10 times + initial try = 11 passes max, but user asked for "uptoten time" for retries, so let's do initial + 10 retries)
+            // Actually user said "after at the last do it again the errored number untill get the value try uptoten time"
+            // So: Initial fetch. Then if errors, retry those errors. Repeat up to 10 retry cycles.
+
+            const MAX_RETRIES = 10;
+            let retryCount = 0;
+
+            while (workQueue.length > 0 && retryCount <= MAX_RETRIES) {
+
+                let nextRetryQueue = [];
+                let iterationLabel = retryCount === 0 ? "Fetching" : `Retrying (Attempt ${retryCount})`;
+
+                for (let i = 0; i < workQueue.length; i++) {
+                    const item = workQueue[i];
+
+                    // Update progress only for the first pass to avoid confusing UI, or show simple status
+                    if (retryCount === 0) {
+                        updateProgress(i, totalItems, `${iterationLabel} ${item.r}...`);
+                    } else {
+                        updateProgress(totalItems - workQueue.length + i, totalItems, `${iterationLabel} ${item.r}...`);
+                    }
+
+                    const result = await fetchResult(item.r, item.d);
+
+                    if (result.success) {
+                        // Success
+                        // Remove from queue (implicitly by not adding to nextRetryQueue)
+                        // Add to results
+                        // We check if we already have it (unlikely unless duplicates in input, but good practice)
+                        finalResultsMap.set(item.r + '-' + item.d, result.data);
+                    } else {
+                        // Failed
+                        // If it's a specific "Data not found" we might not want to retry, but request says "error in fetching details"
+                        // If result.error implies network error or 502, we retry.
+                        // If it says "Invalid Register Number", no point retrying? 
+                        // User instruction "error in fetching deatils ... try uptoten time the errored numbers" matches typical network instability.
+                        // We will retry ALL failures just to be safe, unless we implement specific error codes. 
+                        // Let's assume ephemeral errors.
+
+                        nextRetryQueue.push(item);
+                    }
+
+                    // Update UI with what we have so far
+                    // Re-construct resultsData from finalResultsMap + current failures (so user sees they are failed/pending)
+                    updateResultsData(finalResultsMap, nextRetryQueue);
+                    renderGroupedTables();
+                    updateRankings();
+
+                    // Small delay to be nice to server
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                }
+
+                workQueue = nextRetryQueue;
+                retryCount++;
+
+                if (workQueue.length > 0) {
+                    // Wait a bit longer between retry batches
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                }
+            }
+
+            // After all retries, if some still failed, they are already in resultsData as errors from the last updateResultsData call.
+
+            updateProgress(totalItems, totalItems, "Completed");
             isScraping = false;
             document.getElementById('scrape-btn').disabled = false;
             document.getElementById('btn-text').style.display = 'block';
             document.getElementById('btn-spinner').style.display = 'none';
+        }
+
+        async function fetchResult(regno, dob) {
+            try {
+                const response = await fetch('/api/scrape', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ regno, dob })
+                });
+
+                const result = await response.json();
+                return result;
+
+            } catch (error) {
+                console.error(error);
+                return { success: false, error: "Network Error" };
+            }
+        }
+
+        function updateResultsData(successMap, failedQueue) {
+            // Rebuild the global resultsData array for UI rendering
+            resultsData = [];
+
+            // Add successes
+            for (const data of successMap.values()) {
+                resultsData.push(data);
+            }
+
+            // Add failures/pending
+            for (const item of failedQueue) {
+                resultsData.push({
+                    REGNO: item.r,
+                    DOB: item.d,
+                    error: "Retrying...", // Or keep original error? "Retrying..." is better feedback during loop
+                    NAME: "Pending/Error",
+                    SUBJECTS: {}
+                });
+            }
         }
 
         function getSubjectSignature(student) {
@@ -750,6 +815,56 @@
                 currentY = doc.lastAutoTable.finalY + 15;
             });
 
+            // --- Add Rankings Section ---
+
+            const validResults = resultsData.filter(d => !d.error && d.TOTAL);
+
+            if (validResults.length > 0) {
+                validResults.sort((a, b) => {
+                    const totalA = parseInt(a.TOTAL) || 0;
+                    const totalB = parseInt(b.TOTAL) || 0;
+                    return totalB - totalA;
+                });
+
+                if (currentY > 180) {
+                    doc.addPage();
+                    currentY = 20;
+                }
+
+                doc.setFontSize(14);
+                doc.text("🏆 Top Rankers", 14, currentY);
+                currentY += 5;
+
+                let rankHead = [['Rank', 'Name', 'Group', 'Total', 'Result']];
+                let rankBody = [];
+
+                validResults.forEach((student, index) => {
+                    // Determine group
+                    const subs = Object.keys(student.SUBJECTS || {});
+                    let group = "General";
+                    if (subs.includes('BIOLOGY')) group = "Bio";
+                    else if (subs.includes('COMPUTER SCIENCE')) group = "CS";
+                    else if (subs.includes('COMMERCE')) group = "Commerce";
+
+                    rankBody.push([
+                        index + 1,
+                        student.NAME,
+                        group,
+                        student.TOTAL,
+                        student.RESULT
+                    ]);
+                });
+
+                doc.autoTable({
+                    head: rankHead,
+                    body: rankBody,
+                    startY: currentY,
+                    theme: 'striped', // Make it distinct
+                    styles: { fontSize: 8 },
+                    margin: { top: 20 }
+                });
+            }
+
             doc.save("tn_results_grouped.pdf");
         }
     </script>
@@ -773,6 +888,7 @@
 
         .creator-signature .highlight {
             background: linear-gradient(135deg, #FFD700, #FFA500);
+            background-clip: text;
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             font-weight: 700;
