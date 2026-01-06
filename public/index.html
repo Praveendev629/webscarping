@@ -250,6 +250,47 @@
             transform: rotate(360deg);
         }
     }
+
+    /* Mobile Responsiveness */
+    @media (max-width: 768px) {
+        body {
+            padding: 1rem;
+        }
+
+        h1 {
+            font-size: 2rem;
+            word-wrap: break-word;
+            /* Prevent overflow on very small screens */
+        }
+
+        .main-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .input-card,
+        .results-card {
+            padding: 1.5rem;
+        }
+
+        .actions {
+            flex-direction: column;
+            width: 100%;
+        }
+
+        button {
+            width: 100%;
+            margin-bottom: 0.5rem;
+        }
+
+        /* Adjust table font size for mobile if needed, though scroll is safer */
+        th,
+        td {
+            padding: 0.75rem 0.5rem;
+            font-size: 0.8rem;
+        }
+    }
 </style>
 </head>
 
