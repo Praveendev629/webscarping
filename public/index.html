@@ -469,19 +469,26 @@
             // Group students
             const groups = {};
             resultsData.forEach(student => {
+                let sig;
                 if (student.error) {
-                    // Separate bucket for errors? Or just put them in "Errors"
-                    if (!groups['Errors']) groups['Errors'] = [];
-                    groups['Errors'].push(student);
+                    sig = 'Errors';
                 } else {
-                    const sig = getSubjectSignature(student);
-                    if (!groups[sig]) groups[sig] = [];
-                    groups[sig].push(student);
+                    sig = getSubjectSignature(student);
                 }
+
+                if (!groups[sig]) groups[sig] = [];
+                groups[sig].push(student);
+            });
+
+            // Sort groups: explicit errors last, larger groups first
+            const signatures = Object.keys(groups).sort((a, b) => {
+                if (a === 'Errors') return 1;
+                if (b === 'Errors') return -1;
+                return groups[b].length - groups[a].length;
             });
 
             // Iterate groups and render tables
-            Object.keys(groups).forEach(signature => {
+            signatures.forEach(signature => {
                 const students = groups[signature];
                 const subjects = signature === "Errors" || signature === "No Subjects" ? [] : signature.split(',');
                 const sortedSubjects = sortSubjects(subjects);
@@ -489,19 +496,35 @@
                 // Create Card
                 const card = document.createElement('div');
                 card.className = 'results-card';
-                card.style.marginBottom = '2rem';
+                card.style.marginBottom = '3rem';
+                card.style.borderTop = '2px solid rgba(255,255,255,0.1)';
 
                 // Determine Title
-                let groupName = "Common Group";
-                if (signature === 'Errors') groupName = "Failed/Error List";
-                else if (sortedSubjects.includes('BIOLOGY')) groupName = "Biology Group";
-                else if (sortedSubjects.includes('COMPUTER SCIENCE')) groupName = "Computer Science Group";
-                else if (sortedSubjects.includes('COMMERCE')) groupName = "Commerce Group";
-                else if (sortedSubjects.length > 0) groupName = `${sortedSubjects[sortedSubjects.length - 1]} Group`; // Fallback to last subject
+                let groupName = "Subject Group";
+                if (signature === 'Errors') {
+                    groupName = "⚠️ Failed / Errors";
+                    card.style.borderTopColor = '#f87171';
+                }
+                else if (sortedSubjects.includes('BIOLOGY') && sortedSubjects.includes('MATHEMATICS')) groupName = "Biology & Maths Group";
+                else if (sortedSubjects.includes('COMPUTER SCIENCE') && sortedSubjects.includes('MATHEMATICS')) groupName = "Computer Science Group";
+                else if (sortedSubjects.includes('COMMERCE') && sortedSubjects.includes('ACCOUNTANCY')) groupName = "Commerce Group";
+                else if (sortedSubjects.includes('BIOLOGY')) groupName = "Pure Science (Bio) Group";
+                else {
+                    if (sortedSubjects.length > 0) {
+                        const mainSubs = sortedSubjects.filter(s => !['LANGUAGE', 'ENGLISH', 'TAMIL'].includes(s.toUpperCase()));
+                        if (mainSubs.length > 0) groupName = mainSubs.join(' + ') + " Group";
+                        else groupName = "Language / General Group";
+                    }
+                }
 
                 const headerHtml = `
                     <div class="results-header">
-                        <h3>${groupName}</h3>
+                        <div>
+                            <h3>${groupName}</h3>
+                            <p style="font-size: 0.9rem; color: #94a3b8; margin-top: 0.2rem;">
+                                Subjects: ${sortedSubjects.join(', ') || 'N/A'}
+                            </p>
+                        </div>
                         <span class="status-badge">${students.length} Student(s)</span>
                     </div>
                 `;
@@ -518,7 +541,6 @@
                     tr += `<td>${student.REGNO}</td><td>${student.DOB}</td><td><b>${student.NAME}</b></td>`;
 
                     if (signature === 'Errors') {
-                        // Full span error
                         tr = `<tr><td>${student.REGNO}</td><td>${student.DOB}</td><td colspan="${3 + sortedSubjects.length}" class="status-error">${student.error}</td></tr>`;
                     } else {
                         sortedSubjects.forEach(sub => {
