@@ -251,10 +251,50 @@
         }
     }
 
+    /* FAB and Mobile Modal */
+    .fab {
+        display: none;
+        position: fixed;
+        bottom: 2rem;
+        right: 2rem;
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, var(--primary), var(--secondary));
+        /* Match theme */
+        color: white;
+        font-size: 1.5rem;
+        border: none;
+        box-shadow: 0 4px 20px rgba(99, 102, 241, 0.4);
+        z-index: 1000;
+        cursor: pointer;
+        align-items: center;
+        justify-content: center;
+        transition: transform 0.2s;
+    }
+
+    .fab:hover {
+        transform: scale(1.1);
+    }
+
+    .mobile-close-btn {
+        display: none;
+        position: absolute;
+        top: 1rem;
+        right: 1.5rem;
+        font-size: 2.5rem;
+        color: #94a3b8;
+        cursor: pointer;
+        line-height: 1;
+        z-index: 1001;
+    }
+
     /* Mobile Responsiveness */
     @media (max-width: 768px) {
         body {
             padding: 1rem;
+            padding-bottom: 6rem;
+            /* Space for FAB */
         }
 
         h1 {
@@ -267,6 +307,38 @@
             display: flex;
             flex-direction: column;
             gap: 1.5rem;
+        }
+
+        .fab {
+            display: flex;
+        }
+
+        .mobile-close-btn {
+            display: block;
+        }
+
+        /* Input Card becomes a Modal */
+        .input-card {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100vh;
+            z-index: 9999;
+            border-radius: 0;
+            overflow-y: auto;
+            transform: translateY(100%);
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            margin: 0;
+            padding: 2rem;
+            padding-top: 4rem;
+            /* Space for close button */
+            background: #0f172a;
+            /* Solid background for modal */
+        }
+
+        .input-card.active {
+            transform: translateY(0);
         }
 
         .input-card,
@@ -305,6 +377,7 @@
 
         <!-- Logic / Input Section -->
         <div class="input-card">
+            <div class="mobile-close-btn" onclick="toggleInputCard()">×</div>
             <div class="input-group">
                 <label for="regno-input">Register Numbers (One per line)</label>
                 <textarea id="regno-input" placeholder="123456&#10;123457&#10;123458"></textarea>
@@ -388,6 +461,11 @@
 
     </div>
 
+    <!-- Mobile FAB -->
+    <button id="mobile-toggle-btn" class="fab" onclick="toggleInputCard()">
+        ✏️
+    </button>
+
     <script>
         let resultsData = [];
         let isScraping = false;
@@ -416,6 +494,11 @@
             document.getElementById('scrape-btn').disabled = true;
             document.getElementById('btn-text').style.display = 'none';
             document.getElementById('btn-spinner').style.display = 'block';
+
+            // Auto-close modal on mobile when starting
+            if (window.innerWidth <= 768) {
+                toggleInputCard();
+            }
 
             // Clear previous results container but keep the container itself
             document.getElementById('results-container').innerHTML = '';
@@ -902,6 +985,11 @@
             }
 
             doc.save("tn_results_grouped.pdf");
+            doc.save("tn_results_grouped.pdf");
+        }
+
+        function toggleInputCard() {
+            document.querySelector('.input-card').classList.toggle('active');
         }
     </script>
     <footer class="creator-signature">
