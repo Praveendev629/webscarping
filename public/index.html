@@ -421,25 +421,15 @@
 
                     if (result.success) {
                         // Success
-                        // Remove from queue (implicitly by not adding to nextRetryQueue)
-                        // Add to results
-                        // We check if we already have it (unlikely unless duplicates in input, but good practice)
                         finalResultsMap.set(item.r + '-' + item.d, result.data);
                     } else {
                         // Failed
-                        // If it's a specific "Data not found" we might not want to retry, but request says "error in fetching details"
-                        // If result.error implies network error or 502, we retry.
-                        // If it says "Invalid Register Number", no point retrying? 
-                        // User instruction "error in fetching deatils ... try uptoten time the errored numbers" matches typical network instability.
-                        // We will retry ALL failures just to be safe, unless we implement specific error codes. 
-                        // Let's assume ephemeral errors.
-
+                        item.lastError = result.error; // Capture the error
                         nextRetryQueue.push(item);
                     }
 
                     // Update UI with what we have so far
-                    // Re-construct resultsData from finalResultsMap + current failures (so user sees they are failed/pending)
-                    updateResultsData(finalResultsMap, nextRetryQueue);
+                    updateResultsData(finalResultsMap, nextRetryQueue, false);
                     renderGroupedTables();
                     updateRankings();
 
@@ -456,7 +446,11 @@
                 }
             }
 
-            // After all retries, if some still failed, they are already in resultsData as errors from the last updateResultsData call.
+            // After all retries, if some still failed, show their last error
+            if (workQueue.length > 0) {
+                updateResultsData(finalResultsMap, workQueue, true);
+                renderGroupedTables(); // Ensure the error is rendered
+            }
 
             updateProgress(totalItems, totalItems, "Completed");
             isScraping = false;
@@ -482,7 +476,7 @@
             }
         }
 
-        function updateResultsData(successMap, failedQueue) {
+        function updateResultsData(successMap, failedQueue, isFinal) {
             // Rebuild the global resultsData array for UI rendering
             resultsData = [];
 
@@ -493,11 +487,12 @@
 
             // Add failures/pending
             for (const item of failedQueue) {
+                let errorMsg = isFinal ? (item.lastError || "Failed") : "Retrying...";
                 resultsData.push({
                     REGNO: item.r,
                     DOB: item.d,
-                    error: "Retrying...", // Or keep original error? "Retrying..." is better feedback during loop
-                    NAME: "Pending/Error",
+                    error: errorMsg,
+                    NAME: isFinal ? "Error" : "Pending...",
                     SUBJECTS: {}
                 });
             }
