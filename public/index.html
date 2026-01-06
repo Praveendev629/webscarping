@@ -297,37 +297,34 @@
         </div>
 
         <div>
-            <!-- Output Section -->
-            <div class="results-card">
-                <div class="results-header">
-                    <h3>Results</h3>
-                    <span class="status-badge" id="count-badge">0 Found</span>
-                </div>
-
-                <div class="table-container">
-                    <table id="results-table">
-                        <thead>
-                            <!-- Dynamic Headers will be injected here -->
-                            <tr id="table-header-row">
-                                <th>Reg No</th>
-                                <th>DOB</th>
-                                <th>Name</th>
-                                <th>Status</th>
-                                <!-- Subjects will be appended here -->
-                                <th>Total</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <!-- Rows will be injected here -->
-                        </tbody>
-                    </table>
+            <!-- Output Section with Dynamic Tables -->
+            <div id="results-container">
+                <div class="results-card" id="initial-empty-state">
+                    <div class="results-header">
+                        <h3>Results</h3>
+                        <span class="status-badge">0 Found</span>
+                    </div>
+                    <div class="table-container">
+                        <table class="results-table">
+                            <thead>
+                                <tr>
+                                    <th>Reg No</th>
+                                    <th>DOB</th>
+                                    <th>Name</th>
+                                    <th>Total</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
 
             <!-- Ranking Section -->
-            <div class="results-card">
+            <div class="results-card" style="margin-top: 2rem;">
                 <div class="results-header">
-                    <h3>🏆 Top Rankers</h3>
+                    <h3>🏆 Top Rankers (All Groups)</h3>
                 </div>
                 <div class="table-container">
                     <table id="ranking-table">
@@ -335,6 +332,7 @@
                             <tr>
                                 <th>Rank</th>
                                 <th>Name</th>
+                                <th>Group</th>
                                 <th>Total Marks</th>
                                 <th>Result</th>
                             </tr>
@@ -352,7 +350,9 @@
     <script>
         let resultsData = [];
         let isScraping = false;
-        let subjectColumns = new Set(); // To track all unique subjects found
+
+        // Define standard subject order
+        const PREFERRED_SUBJECT_ORDER = ['LANGUAGE', 'ENGLISH', 'TAMIL', 'MATHEMATICS', 'PHYSICS', 'CHEMISTRY', 'BIOLOGY', 'COMPUTER SCIENCE', 'HISTORY', 'GEOGRAPHY', 'COMMERCE', 'ACCOUNTANCY'];
 
         async function startScraping() {
             if (isScraping) return;
@@ -375,12 +375,12 @@
             document.getElementById('scrape-btn').disabled = true;
             document.getElementById('btn-text').style.display = 'none';
             document.getElementById('btn-spinner').style.display = 'block';
-            document.querySelector('#results-table tbody').innerHTML = '';
+
+            // Clear previous results container but keep the container itself
+            document.getElementById('results-container').innerHTML = '';
             document.querySelector('#ranking-table tbody').innerHTML = '';
 
             resultsData = [];
-            subjectColumns.clear();
-            resetTableHeader();
 
             updateProgress(0, regnos.length);
 
@@ -401,21 +401,36 @@
                     const result = await response.json();
 
                     if (result.success) {
-                        processSuccessfulResult(result.data);
+                        resultsData.push(result.data);
                     } else {
-                        addErrorRow(r, d, result.error);
+                        resultsData.push({
+                            REGNO: r,
+                            DOB: d,
+                            error: result.error,
+                            NAME: "Error",
+                            SUBJECTS: {}
+                        });
                     }
 
                 } catch (error) {
                     console.error(error);
-                    addErrorRow(r, d, "Network/Server Error");
+                    resultsData.push({
+                        REGNO: r,
+                        DOB: d,
+                        error: "Network Error",
+                        NAME: "Error",
+                        SUBJECTS: {}
+                    });
                 }
+
+                // Real-time update (re-render groups on every fetch for immediate feedback)
+                renderGroupedTables();
+                updateRankings();
 
                 // Small delay
                 await new Promise(resolve => setTimeout(resolve, 500));
             }
 
-            updateRankings();
             updateProgress(regnos.length, regnos.length, "Completed");
             isScraping = false;
             document.getElementById('scrape-btn').disabled = false;
@@ -423,130 +438,112 @@
             document.getElementById('btn-spinner').style.display = 'none';
         }
 
-        function resetTableHeader() {
-            const tr = document.getElementById('table-header-row');
-            tr.innerHTML = `
-                <th>Reg No</th>
-                <th>DOB</th>
-                <th>Name</th>
-                <th>Total</th>
-                <th>Status</th>
-            `;
+        function getSubjectSignature(student) {
+            if (!student.SUBJECTS || Object.keys(student.SUBJECTS).length === 0) return "No Subjects";
+            // Sort keys to ensure consistent signature
+            return Object.keys(student.SUBJECTS).sort().join(',');
         }
 
-        function updateTableHeader() {
-            const tr = document.getElementById('table-header-row');
+        function sortSubjects(subjectsArray) {
+            return subjectsArray.sort((a, b) => {
+                const aUpper = a.toUpperCase();
+                const bUpper = b.toUpperCase();
 
-            let html = `
-                <th>Reg No</th>
-                <th>DOB</th>
-                <th>Name</th>
-            `;
+                const idxA = PREFERRED_SUBJECT_ORDER.findIndex(p => aUpper.includes(p));
+                const idxB = PREFERRED_SUBJECT_ORDER.findIndex(p => bUpper.includes(p));
 
-            subjectColumns.forEach(sub => {
-                html += `<th>${sub}</th>`;
+                if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+                if (idxA !== -1) return -1;
+                if (idxB !== -1) return 1;
+
+                return a.localeCompare(b);
             });
-
-            html += `
-                <th>Total</th>
-                <th>Status</th>
-            `;
-
-            tr.innerHTML = html;
         }
 
-        function processSuccessfulResult(data) {
-            // Store structured data
-            resultsData.push(data);
+        function renderGroupedTables() {
+            const container = document.getElementById('results-container');
+            container.innerHTML = '';
 
-            // Check for new subjects
-            if (data.SUBJECTS) {
-                let foundNew = false;
-                Object.keys(data.SUBJECTS).forEach(sub => {
-                    if (!subjectColumns.has(sub)) {
-                        subjectColumns.add(sub);
-                        foundNew = true;
-                    }
-                });
-                if (foundNew) {
-                    updateTableHeader();
-                    renderAllRows();
-                    return;
-                }
-            }
+            if (resultsData.length === 0) return;
 
-            // If no new columns, just add this row
-            renderRow(data);
-            document.getElementById('count-badge').innerText = `${resultsData.length} Found`;
-        }
-
-        function renderAllRows() {
-            const tbody = document.querySelector('#results-table tbody');
-            tbody.innerHTML = '';
-            resultsData.forEach(item => {
-                if (item.error) {
-                    renderErrorRow(item);
+            // Group students
+            const groups = {};
+            resultsData.forEach(student => {
+                if (student.error) {
+                    // Separate bucket for errors? Or just put them in "Errors"
+                    if (!groups['Errors']) groups['Errors'] = [];
+                    groups['Errors'].push(student);
                 } else {
-                    renderRow(item);
+                    const sig = getSubjectSignature(student);
+                    if (!groups[sig]) groups[sig] = [];
+                    groups[sig].push(student);
                 }
             });
-            document.getElementById('count-badge').innerText = `${resultsData.length} Found`;
-        }
 
-        function renderRow(data) {
-            const tbody = document.querySelector('#results-table tbody');
-            const tr = document.createElement('tr');
+            // Iterate groups and render tables
+            Object.keys(groups).forEach(signature => {
+                const students = groups[signature];
+                const subjects = signature === "Errors" || signature === "No Subjects" ? [] : signature.split(',');
+                const sortedSubjects = sortSubjects(subjects);
 
-            let tds = `
-                <td>${data.REGNO}</td>
-                <td>${data.DOB}</td>
-                <td><b>${data.NAME || "N/A"}</b></td>
-            `;
+                // Create Card
+                const card = document.createElement('div');
+                card.className = 'results-card';
+                card.style.marginBottom = '2rem';
 
-            // Subject Marks
-            subjectColumns.forEach(sub => {
-                const mark = data.SUBJECTS && data.SUBJECTS[sub] ? data.SUBJECTS[sub] : '-';
-                tds += `<td>${mark}</td>`;
+                // Determine Title
+                let groupName = "Common Group";
+                if (signature === 'Errors') groupName = "Failed/Error List";
+                else if (sortedSubjects.includes('BIOLOGY')) groupName = "Biology Group";
+                else if (sortedSubjects.includes('COMPUTER SCIENCE')) groupName = "Computer Science Group";
+                else if (sortedSubjects.includes('COMMERCE')) groupName = "Commerce Group";
+                else if (sortedSubjects.length > 0) groupName = `${sortedSubjects[sortedSubjects.length - 1]} Group`; // Fallback to last subject
+
+                const headerHtml = `
+                    <div class="results-header">
+                        <h3>${groupName}</h3>
+                        <span class="status-badge">${students.length} Student(s)</span>
+                    </div>
+                `;
+
+                // Build Table Header
+                let thHtml = `<th>Reg No</th><th>DOB</th><th>Name</th>`;
+                sortedSubjects.forEach(s => thHtml += `<th>${s}</th>`);
+                thHtml += `<th>Total</th><th>Status</th>`;
+
+                // Build Table Body
+                let tbodyHtml = '';
+                students.forEach(student => {
+                    let tr = '<tr>';
+                    tr += `<td>${student.REGNO}</td><td>${student.DOB}</td><td><b>${student.NAME}</b></td>`;
+
+                    if (signature === 'Errors') {
+                        // Full span error
+                        tr = `<tr><td>${student.REGNO}</td><td>${student.DOB}</td><td colspan="${3 + sortedSubjects.length}" class="status-error">${student.error}</td></tr>`;
+                    } else {
+                        sortedSubjects.forEach(sub => {
+                            const mark = student.SUBJECTS[sub] || '-';
+                            tr += `<td>${mark}</td>`;
+                        });
+
+                        const statusClass = student.RESULT === 'PASS' ? 'status-pass' : 'status-fail';
+                        tr += `<td><b>${student.TOTAL || '-'}</b></td><td><span class="${statusClass}">${student.RESULT || '-'}</span></td></tr>`;
+                    }
+                    tbodyHtml += tr;
+                });
+
+                card.innerHTML = `
+                    ${headerHtml}
+                    <div class="table-container">
+                        <table class="results-table">
+                            <thead><tr>${thHtml}</tr></thead>
+                            <tbody>${tbodyHtml}</tbody>
+                        </table>
+                    </div>
+                `;
+
+                container.appendChild(card);
             });
-
-            // Total and Status
-            const total = data.TOTAL || '-';
-            const status = data.RESULT === 'PASS'
-                ? '<span class="status-pass">PASS</span>'
-                : `<span class="status-fail">${data.RESULT || '-'}</span>`;
-
-            tds += `<td><b>${total}</b></td>`;
-            tds += `<td>${status}</td>`;
-
-            tr.innerHTML = tds;
-            tbody.appendChild(tr);
-        }
-
-        function addErrorRow(regno, dob, errorMsg) {
-            const errorObj = {
-                REGNO: regno,
-                DOB: dob,
-                NAME: "Error",
-                error: errorMsg,
-                TOTAL: 0,
-                RESULT: 'FAIL'
-            };
-            resultsData.push(errorObj);
-            renderErrorRow(errorObj);
-        }
-
-        function renderErrorRow(data) {
-            const tbody = document.querySelector('#results-table tbody');
-            const tr = document.createElement('tr');
-
-            // Span across all columns
-            const colSpan = 4 + subjectColumns.size;
-            tr.innerHTML = `
-                <td>${data.REGNO}</td>
-                <td>${data.DOB}</td>
-                <td colspan="${colSpan}" class="status-error">${data.error}</td>
-             `;
-            tbody.appendChild(tr);
         }
 
         function updateRankings() {
@@ -564,7 +561,7 @@
             tbody.innerHTML = '';
 
             if (validResults.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="4">No rankings available</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="5">No rankings available</td></tr>';
                 return;
             }
 
@@ -576,9 +573,17 @@
                 else if (index === 2) rankIcon = '🥉 ';
                 else rankIcon = `#${index + 1}`;
 
+                // Determine group simply
+                const subs = Object.keys(student.SUBJECTS || {});
+                let group = "General";
+                if (subs.includes('BIOLOGY')) group = "Bio";
+                else if (subs.includes('COMPUTER SCIENCE')) group = "CS";
+                else if (subs.includes('COMMERCE')) group = "Commerce";
+
                 tr.innerHTML = `
                     <td>${rankIcon}</td>
                     <td><b>${student.NAME}</b></td>
+                    <td>${group}</td>
                     <td>${student.TOTAL}</td>
                     <td>${student.RESULT}</td>
                 `;
@@ -598,23 +603,38 @@
                 return;
             }
 
-            // Build CSV Headers
-            let headers = ['Reg No', 'DOB', 'Name'];
-            subjectColumns.forEach(s => headers.push(s));
+            // For CSV, we can't easily do multiple tables in one simple CSV.
+            // Strategy: Create a "superset" of all subjects found in resultsData to have one big table.
+
+            let allSubjects = new Set();
+            resultsData.forEach(s => {
+                if (s.SUBJECTS) Object.keys(s.SUBJECTS).forEach(sub => allSubjects.add(sub));
+            });
+            const sortedAllSubjects = sortSubjects(Array.from(allSubjects));
+
+            let headers = ['Reg No', 'DOB', 'Name', 'Group'];
+            sortedAllSubjects.forEach(s => headers.push(s));
             headers.push('Total', 'Result');
 
             const csvRows = [headers.join(',')];
 
             resultsData.forEach(row => {
-                if (row.error) return; // Skip errors in clean export
+                if (row.error) return;
+
+                // Determine group
+                const subs = Object.keys(row.SUBJECTS || {});
+                let group = "General";
+                if (subs.includes('BIOLOGY')) group = "Bio";
+                else if (subs.includes('COMPUTER SCIENCE')) group = "CS";
 
                 let values = [
                     row.REGNO,
                     row.DOB,
-                    row.NAME
+                    row.NAME,
+                    group
                 ];
 
-                subjectColumns.forEach(sub => {
+                sortedAllSubjects.forEach(sub => {
                     values.push(row.SUBJECTS && row.SUBJECTS[sub] ? row.SUBJECTS[sub] : '-');
                 });
 
@@ -628,7 +648,7 @@
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = 'tn_results_report.csv';
+            a.download = 'tn_results_grouped.csv';
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -641,44 +661,76 @@
             }
 
             const { jsPDF } = window.jspdf;
-            const doc = new jsPDF('l'); // Landscape for table
+            const doc = new jsPDF('l');
 
             doc.setFontSize(18);
             doc.text("TN Examination Results Report", 14, 20);
             doc.setFontSize(10);
             doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 28);
 
-            // Dynamically build columns
-            let head = [['Reg No', 'DOB', 'Name']];
-            subjectColumns.forEach(s => head[0].push(s));
-            head[0].push('Total');
-            head[0].push('Result');
+            let currentY = 35;
 
-            let body = [];
-            resultsData.forEach(row => {
-                if (row.error) return;
+            // Group again for PDF
+            const groups = {};
+            resultsData.forEach(student => {
+                if (!student.error) {
+                    const sig = getSubjectSignature(student);
+                    if (!groups[sig]) groups[sig] = [];
+                    groups[sig].push(student);
+                }
+            });
 
-                let vals = [row.REGNO, row.DOB, row.NAME];
-                subjectColumns.forEach(sub => {
-                    vals.push(row.SUBJECTS && row.SUBJECTS[sub] ? row.SUBJECTS[sub] : '-');
+            Object.keys(groups).forEach(signature => {
+                const students = groups[signature];
+                const subjects = signature.split(',');
+                const sortedSubjects = sortSubjects(subjects);
+
+                // Title
+                let groupName = "Common Group";
+                if (sortedSubjects.includes('BIOLOGY')) groupName = "Biology Group";
+                else if (sortedSubjects.includes('COMPUTER SCIENCE')) groupName = "Computer Science Group";
+
+                // Check page space
+                if (currentY > 180) {
+                    doc.addPage();
+                    currentY = 20;
+                }
+
+                doc.setFontSize(14);
+                doc.text(`${groupName} (${students.length})`, 14, currentY);
+                currentY += 5;
+
+                let head = [['Reg No', 'DOB', 'Name']];
+                sortedSubjects.forEach(s => head[0].push(s));
+                head[0].push('Total');
+                head[0].push('Result');
+
+                let body = [];
+                students.forEach(row => {
+                    let vals = [row.REGNO, row.DOB, row.NAME];
+                    sortedSubjects.forEach(sub => {
+                        vals.push(row.SUBJECTS && row.SUBJECTS[sub] ? row.SUBJECTS[sub] : '-');
+                    });
+                    vals.push(row.TOTAL || '-');
+                    vals.push(row.RESULT || '-');
+                    body.push(vals);
                 });
-                vals.push(row.TOTAL || '-');
-                vals.push(row.RESULT || '-');
-                body.push(vals);
+
+                doc.autoTable({
+                    head: head,
+                    body: body,
+                    startY: currentY,
+                    theme: 'grid',
+                    styles: { fontSize: 8 },
+                    margin: { top: 20 }
+                });
+
+                currentY = doc.lastAutoTable.finalY + 15;
             });
 
-            doc.autoTable({
-                head: head,
-                body: body,
-                startY: 35,
-                theme: 'grid',
-                styles: { fontSize: 8 }
-            });
-
-            doc.save("tn_results_report.pdf");
+            doc.save("tn_results_grouped.pdf");
         }
     </script>
-
     <footer class="creator-signature">
         <p>Made with ❤️ by <span class="highlight">Praveen</span></p>
     </footer>
